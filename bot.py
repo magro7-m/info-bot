@@ -1,8 +1,9 @@
 import os
 import logging
+import asyncio
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, ConversationHandler
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -11,10 +12,9 @@ logging.basicConfig(
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 
-CHOOSING_CURRENCY = 1
-ENTERING_AMOUNT = 2
-
 user_calc_data = {}
+user_alerts = {}
+user_alert_setup = {}
 
 ARABIC_CURRENCIES = {
     'SAR': '🇸🇦 ريال سعودي',
@@ -70,6 +70,14 @@ FOREIGN_CURRENCIES = {
 }
 
 ALL_CURRENCIES = {**ARABIC_CURRENCIES, **FOREIGN_CURRENCIES}
+
+CRYPTO_LIST = {
+    'bitcoin': 'BTC بيتكوين',
+    'ethereum': 'ETH إيثيريوم',
+    'binancecoin': 'BNB بينانس',
+    'solana': 'SOL سولانا',
+    'ripple': 'XRP ريبل',
+}
 
 def get_crypto():
     try:
@@ -127,8 +135,7 @@ def get_currency(base='USD'):
             timeout=10
         ).json()
         rates = r['rates']
-
-        base_names = {**ARABIC_CURRENCIES, **FOREIGN_CURRENCIES}
+        base_name = ALL_CURRENCIES.get(base, base)
 
         arabic = (
             f"🌍 العملات العربية:\n"
@@ -190,10 +197,7 @@ def get_currency(base='USD'):
             f"🇨🇱 بيزو تشيلي: {rates.get('CLP', 'N/A')}\n"
         )
 
-        return (
-            f"💵 أسعار الصرف مقابل {base_names.get(base, base)}:\n\n"
-            + arabic + foreign
-        )
+        return f"💵 أسعار الصرف مقابل {base_name}:\n\n" + arabic + foreign
 
     except Exception as e:
         return f"تعذر جلب أسعار الصرف: {e}"
@@ -206,23 +210,64 @@ def calculate_conversion(amount, from_currency):
         ).json()
         rates = r['rates']
         from_name = ALL_CURRENCIES.get(from_currency, from_currency)
-
         result = f"🧮 تحويل {amount:,} {from_name}:\n\n"
         result += f"🌍 العملات العربية:\n"
         for code, name in ARABIC_CURRENCIES.items():
             if code != from_currency:
                 converted = rates.get(code, 0) * amount
                 result += f"{name}: {converted:,.2f}\n"
-
         result += f"\n🌐 العملات الأجنبية:\n"
         for code, name in FOREIGN_CURRENCIES.items():
             if code != from_currency:
                 converted = rates.get(code, 0) * amount
                 result += f"{name}: {converted:,.2f}\n"
-
         return result
     except Exception as e:
         return f"تعذر إجراء التحويل: {e}"
+
+async def check_alerts(app):
+    while True:
+        try:
+            if user_alerts:
+                url = "https://api.coingecko.com/api/v3/simple/price"
+                params = {
+                    'ids': ','.join(CRYPTO_LIST.keys()),
+                    'vs_currencies': 'usd'
+                }
+                prices = requests.get(url, params=params, timeout=10).json()
+
+                alerts_to_remove = []
+                for user_id, alerts in user_alerts.items():
+                    for alert in alerts[:]:
+                        coin = alert['coin']
+                        target = alert['target']
+                        direction = alert['direction']
+                        current = prices.get(coin, {}).get('usd', 0)
+
+                        triggered = (
+                            (direction == 'above' and current >= target) or
+                            (direction == 'below' and current <= target)
+                        )
+
+                        if triggered:
+                            coin_name = CRYPTO_LIST.get(coin, coin)
+                            direction_text = "وصل إلى أو تجاوز" if direction == 'above' else "انخفض إلى أو تحت"
+                            msg = (
+                                f"🔔 تنبيه السعر!\n\n"
+                                f"💰 {coin_name}\n"
+                                f"السعر الحالي: {current:,}$\n"
+                                f"{direction_text} هدفك: {target:,}$"
+                            )
+                            try:
+                                await app.bot.send_message(chat_id=user_id, text=msg)
+                                alerts.remove(alert)
+                            except Exception as e:
+                                logging.error(f"خطأ في إرسال التنبيه: {e}")
+
+        except Exception as e:
+            logging.error(f"خطأ في فحص التنبيهات: {e}")
+
+        await asyncio.sleep(60)
 
 def main_keyboard():
     return InlineKeyboardMarkup([
@@ -230,6 +275,7 @@ def main_keyboard():
         [InlineKeyboardButton("⚗️ المعادن الثمينة", callback_data='metals')],
         [InlineKeyboardButton("💵 أسعار الصرف", callback_data='currency_menu')],
         [InlineKeyboardButton("🧮 حاسبة تحويل العملات", callback_data='calc')],
+        [InlineKeyboardButton("🔔 تنبيهات الأسعار", callback_data='alerts')],
         [InlineKeyboardButton("📊 كل الأسعار بالدولار", callback_data='all_USD')]
     ])
 
@@ -244,6 +290,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    user_id = query.from_user.id
 
     if query.data == 'crypto':
         await query.message.reply_text(get_crypto())
@@ -251,6 +298,66 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif query.data == 'metals':
         await query.message.reply_text("⏳ جاري جلب أسعار المعادن...")
         await query.message.reply_text(get_metals())
+
+    elif query.data == 'alerts':
+        keyboard = [
+            [InlineKeyboardButton("🟠 بيتكوين BTC", callback_data='alert_bitcoin')],
+            [InlineKeyboardButton("🔵 إيثيريوم ETH", callback_data='alert_ethereum')],
+            [InlineKeyboardButton("🟡 بينانس BNB", callback_data='alert_binancecoin')],
+            [InlineKeyboardButton("🟣 سولانا SOL", callback_data='alert_solana')],
+            [InlineKeyboardButton("⚫ ريبل XRP", callback_data='alert_ripple')],
+            [InlineKeyboardButton("📋 تنبيهاتي الحالية", callback_data='my_alerts')],
+            [InlineKeyboardButton("🗑️ حذف كل التنبيهات", callback_data='clear_alerts')],
+            [InlineKeyboardButton("🔙 رجوع", callback_data='back')]
+        ]
+        await query.message.reply_text(
+            "🔔 تنبيهات الأسعار\n\nاختر العملة التي تريد تنبيهاً عليها:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data.startswith('alert_'):
+        coin = query.data.replace('alert_', '')
+        user_alert_setup[user_id] = {'coin': coin, 'step': 'direction'}
+        coin_name = CRYPTO_LIST.get(coin, coin)
+        keyboard = [
+            [InlineKeyboardButton("📈 عندما يرتفع فوق سعر معين", callback_data='dir_above')],
+            [InlineKeyboardButton("📉 عندما ينخفض تحت سعر معين", callback_data='dir_below')],
+            [InlineKeyboardButton("🔙 رجوع", callback_data='alerts')]
+        ]
+        await query.message.reply_text(
+            f"🔔 تنبيه لـ {coin_name}\nمتى تريد التنبيه؟",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data in ['dir_above', 'dir_below']:
+        if user_id in user_alert_setup:
+            direction = 'above' if query.data == 'dir_above' else 'below'
+            user_alert_setup[user_id]['direction'] = direction
+            user_alert_setup[user_id]['step'] = 'price'
+            direction_text = "ارتفع فوق" if direction == 'above' else "انخفض تحت"
+            coin = user_alert_setup[user_id]['coin']
+            coin_name = CRYPTO_LIST.get(coin, coin)
+            await query.message.reply_text(
+                f"💰 أدخل السعر المستهدف بالدولار لـ {coin_name}\n"
+                f"سيصلك تنبيه عندما {direction_text} هذا السعر\n\n"
+                f"مثال: 90000"
+            )
+
+    elif query.data == 'my_alerts':
+        alerts = user_alerts.get(user_id, [])
+        if not alerts:
+            await query.message.reply_text("📭 لا توجد تنبيهات مفعّلة حالياً")
+        else:
+            msg = "📋 تنبيهاتك الحالية:\n\n"
+            for i, alert in enumerate(alerts, 1):
+                coin_name = CRYPTO_LIST.get(alert['coin'], alert['coin'])
+                direction_text = "فوق" if alert['direction'] == 'above' else "تحت"
+                msg += f"{i}. {coin_name} {direction_text} {alert['target']:,}$\n"
+            await query.message.reply_text(msg)
+
+    elif query.data == 'clear_alerts':
+        user_alerts.pop(user_id, None)
+        await query.message.reply_text("✅ تم حذف جميع تنبيهاتك")
 
     elif query.data == 'currency_menu':
         keyboard = [
@@ -327,11 +434,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif query.data.startswith('calc_'):
         currency = query.data.replace('calc_', '')
-        user_calc_data[query.from_user.id] = currency
+        user_calc_data[user_id] = {'type': 'calc', 'currency': currency}
         currency_name = ALL_CURRENCIES.get(currency, currency)
         await query.message.reply_text(
-            f"💱 أدخل المبلغ بـ {currency_name}:\n\n"
-            f"مثال: 100 أو 1500.50"
+            f"💱 أدخل المبلغ بـ {currency_name}:\n\nمثال: 100 أو 1500.50"
         )
 
     elif query.data.startswith('cur_'):
@@ -352,32 +458,67 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=main_keyboard()
         )
 
-async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    if user_id not in user_calc_data:
-        return
+    text = update.message.text.strip()
 
-    try:
-        amount = float(update.message.text.replace(',', ''))
-        from_currency = user_calc_data[user_id]
-        await update.message.reply_text("⏳ جاري حساب التحويل...")
-        result = calculate_conversion(amount, from_currency)
-        await update.message.reply_text(result)
-        del user_calc_data[user_id]
-        await update.message.reply_text(
-            "اختر ما تريد:",
-            reply_markup=main_keyboard()
-        )
-    except ValueError:
-        await update.message.reply_text(
-            "⚠️ الرجاء إدخال رقم صحيح فقط\nمثال: 100 أو 1500.50"
-        )
+    if user_id in user_alert_setup and user_alert_setup[user_id].get('step') == 'price':
+        try:
+            target_price = float(text.replace(',', ''))
+            setup = user_alert_setup[user_id]
+            coin = setup['coin']
+            direction = setup['direction']
+            coin_name = CRYPTO_LIST.get(coin, coin)
+            direction_text = "فوق" if direction == 'above' else "تحت"
+
+            if user_id not in user_alerts:
+                user_alerts[user_id] = []
+
+            user_alerts[user_id].append({
+                'coin': coin,
+                'target': target_price,
+                'direction': direction
+            })
+
+            del user_alert_setup[user_id]
+
+            await update.message.reply_text(
+                f"✅ تم تفعيل التنبيه!\n\n"
+                f"💰 {coin_name}\n"
+                f"سيصلك تنبيه عندما يكون السعر {direction_text} {target_price:,}$\n\n"
+                f"يتم الفحص كل دقيقة 🔍",
+                reply_markup=main_keyboard()
+            )
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ الرجاء إدخال رقم صحيح فقط\nمثال: 90000"
+            )
+
+    elif user_id in user_calc_data and user_calc_data[user_id].get('type') == 'calc':
+        try:
+            amount = float(text.replace(',', ''))
+            currency = user_calc_data[user_id]['currency']
+            await update.message.reply_text("⏳ جاري حساب التحويل...")
+            result = calculate_conversion(amount, currency)
+            await update.message.reply_text(result)
+            del user_calc_data[user_id]
+            await update.message.reply_text(
+                "اختر ما تريد:",
+                reply_markup=main_keyboard()
+            )
+        except ValueError:
+            await update.message.reply_text(
+                "⚠️ الرجاء إدخال رقم صحيح فقط\nمثال: 100 أو 1500.50"
+            )
+
+async def post_init(app):
+    asyncio.create_task(check_alerts(app))
 
 def main():
-    application = Application.builder().token(TOKEN).build()
+    application = Application.builder().token(TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     application.run_polling()
 
 if __name__ == "__main__":
