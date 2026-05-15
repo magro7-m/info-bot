@@ -2,7 +2,7 @@ import os
 import logging
 import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes, MessageHandler, filters, ConversationHandler
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -10,6 +10,66 @@ logging.basicConfig(
 )
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
+
+CHOOSING_CURRENCY = 1
+ENTERING_AMOUNT = 2
+
+user_calc_data = {}
+
+ARABIC_CURRENCIES = {
+    'SAR': '🇸🇦 ريال سعودي',
+    'AED': '🇦🇪 درهم إماراتي',
+    'EGP': '🇪🇬 جنيه مصري',
+    'KWD': '🇰🇼 دينار كويتي',
+    'BHD': '🇧🇭 دينار بحريني',
+    'QAR': '🇶🇦 ريال قطري',
+    'OMR': '🇴🇲 ريال عماني',
+    'JOD': '🇯🇴 دينار أردني',
+    'LBP': '🇱🇧 ليرة لبنانية',
+    'IQD': '🇮🇶 دينار عراقي',
+    'SYP': '🇸🇾 ليرة سورية',
+    'YER': '🇾🇪 ريال يمني',
+    'DZD': '🇩🇿 دينار جزائري',
+    'MAD': '🇲🇦 درهم مغربي',
+    'TND': '🇹🇳 دينار تونسي',
+    'LYD': '🇱🇾 دينار ليبي',
+    'SDG': '🇸🇩 جنيه سوداني',
+    'SOS': '🇸🇴 شلن صومالي',
+    'DJF': '🇩🇯 فرنك جيبوتي',
+    'KMF': '🇰🇲 فرنك قمري',
+    'MRU': '🇲🇷 أوقية موريتانية',
+    'ILS': '🇵🇸 شيكل فلسطيني',
+}
+
+FOREIGN_CURRENCIES = {
+    'USD': '🇺🇸 دولار أمريكي',
+    'EUR': '🇪🇺 يورو',
+    'GBP': '🇬🇧 جنيه إسترليني',
+    'CHF': '🇨🇭 فرنك سويسري',
+    'JPY': '🇯🇵 ين ياباني',
+    'CNY': '🇨🇳 يوان صيني',
+    'CAD': '🇨🇦 دولار كندي',
+    'AUD': '🇦🇺 دولار أسترالي',
+    'INR': '🇮🇳 روبية هندية',
+    'TRY': '🇹🇷 ليرة تركية',
+    'RUB': '🇷🇺 روبل روسي',
+    'KRW': '🇰🇷 وون كوري',
+    'BRL': '🇧🇷 ريال برازيلي',
+    'SGD': '🇸🇬 دولار سنغافوري',
+    'HKD': '🇭🇰 دولار هونج كونج',
+    'NZD': '🇳🇿 دولار نيوزيلندي',
+    'NOK': '🇳🇴 كرون نرويجي',
+    'SEK': '🇸🇪 كرون سويدي',
+    'MXN': '🇲🇽 بيزو مكسيكي',
+    'ZAR': '🇿🇦 راند جنوب أفريقي',
+    'PKR': '🇵🇰 روبية باكستانية',
+    'MYR': '🇲🇾 رينغيت ماليزي',
+    'THB': '🇹🇭 بات تايلاندي',
+    'NGN': '🇳🇬 نايرة نيجيرية',
+    'ARS': '🇦🇷 بيزو أرجنتيني',
+}
+
+ALL_CURRENCIES = {**ARABIC_CURRENCIES, **FOREIGN_CURRENCIES}
 
 def get_crypto():
     try:
@@ -68,33 +128,7 @@ def get_currency(base='USD'):
         ).json()
         rates = r['rates']
 
-        base_names = {
-            'USD': '🇺🇸 الدولار الأمريكي',
-            'SAR': '🇸🇦 الريال السعودي',
-            'AED': '🇦🇪 الدرهم الإماراتي',
-            'EGP': '🇪🇬 الجنيه المصري',
-            'KWD': '🇰🇼 الدينار الكويتي',
-            'BHD': '🇧🇭 الدينار البحريني',
-            'QAR': '🇶🇦 الريال القطري',
-            'OMR': '🇴🇲 الريال العماني',
-            'JOD': '🇯🇴 الدينار الأردني',
-            'IQD': '🇮🇶 الدينار العراقي',
-            'LBP': '🇱🇧 الليرة اللبنانية',
-            'SYP': '🇸🇾 الليرة السورية',
-            'YER': '🇾🇪 الريال اليمني',
-            'DZD': '🇩🇿 الدينار الجزائري',
-            'MAD': '🇲🇦 الدرهم المغربي',
-            'TND': '🇹🇳 الدينار التونسي',
-            'LYD': '🇱🇾 الدينار الليبي',
-            'SDG': '🇸🇩 الجنيه السوداني',
-            'SOS': '🇸🇴 الشلن الصومالي',
-            'DJF': '🇩🇯 الفرنك الجيبوتي',
-            'KMF': '🇰🇲 الفرنك القمري',
-            'MRU': '🇲🇷 الأوقية الموريتانية',
-            'ILS': '🇵🇸 الشيكل الفلسطيني',
-            'EUR': '🇪🇺 اليورو',
-            'GBP': '🇬🇧 الجنيه الإسترليني',
-        }
+        base_names = {**ARABIC_CURRENCIES, **FOREIGN_CURRENCIES}
 
         arabic = (
             f"🌍 العملات العربية:\n"
@@ -148,11 +182,9 @@ def get_currency(base='USD'):
             f"🇵🇰 روبية باكستانية: {rates.get('PKR', 'N/A')}\n"
             f"🇮🇩 روبية إندونيسية: {rates.get('IDR', 'N/A')}\n"
             f"🇹🇭 بات تايلاندي: {rates.get('THB', 'N/A')}\n"
-            f"🇵🇱 زلوتي بولندي: {rates.get('PLN', 'N/A')}\n"
             f"🇲🇾 رينغيت ماليزي: {rates.get('MYR', 'N/A')}\n"
             f"🇵🇭 بيزو فلبيني: {rates.get('PHP', 'N/A')}\n"
             f"🇳🇬 نايرة نيجيرية: {rates.get('NGN', 'N/A')}\n"
-            f"🇰🇪 شلن كيني: {rates.get('KES', 'N/A')}\n"
             f"🇦🇷 بيزو أرجنتيني: {rates.get('ARS', 'N/A')}\n"
             f"🇨🇴 بيزو كولومبي: {rates.get('COP', 'N/A')}\n"
             f"🇨🇱 بيزو تشيلي: {rates.get('CLP', 'N/A')}\n"
@@ -166,18 +198,47 @@ def get_currency(base='USD'):
     except Exception as e:
         return f"تعذر جلب أسعار الصرف: {e}"
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
+def calculate_conversion(amount, from_currency):
+    try:
+        r = requests.get(
+            f"https://api.exchangerate-api.com/v4/latest/{from_currency}",
+            timeout=10
+        ).json()
+        rates = r['rates']
+        from_name = ALL_CURRENCIES.get(from_currency, from_currency)
+
+        result = f"🧮 تحويل {amount:,} {from_name}:\n\n"
+        result += f"🌍 العملات العربية:\n"
+        for code, name in ARABIC_CURRENCIES.items():
+            if code != from_currency:
+                converted = rates.get(code, 0) * amount
+                result += f"{name}: {converted:,.2f}\n"
+
+        result += f"\n🌐 العملات الأجنبية:\n"
+        for code, name in FOREIGN_CURRENCIES.items():
+            if code != from_currency:
+                converted = rates.get(code, 0) * amount
+                result += f"{name}: {converted:,.2f}\n"
+
+        return result
+    except Exception as e:
+        return f"تعذر إجراء التحويل: {e}"
+
+def main_keyboard():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("💰 العملات الرقمية", callback_data='crypto')],
         [InlineKeyboardButton("⚗️ المعادن الثمينة", callback_data='metals')],
         [InlineKeyboardButton("💵 أسعار الصرف", callback_data='currency_menu')],
+        [InlineKeyboardButton("🧮 حاسبة تحويل العملات", callback_data='calc')],
         [InlineKeyboardButton("📊 كل الأسعار بالدولار", callback_data='all_USD')]
-    ]
+    ])
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "👋 مرحباً في بوت الخبير الاقتصادي!\n\n"
         "أحصل على آخر الأسعار والمعلومات الاقتصادية\n"
         "اختر ما تريد:",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        reply_markup=main_keyboard()
     )
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -192,7 +253,7 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(get_metals())
 
     elif query.data == 'currency_menu':
-        keyboard1 = [
+        keyboard = [
             [InlineKeyboardButton("🇺🇸 مقابل الدولار", callback_data='cur_USD')],
             [InlineKeyboardButton("🇸🇦 مقابل الريال السعودي", callback_data='cur_SAR')],
             [InlineKeyboardButton("🇦🇪 مقابل الدرهم الإماراتي", callback_data='cur_AED')],
@@ -222,7 +283,55 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ]
         await query.message.reply_text(
             "اختر العملة الأساسية للمقارنة:",
-            reply_markup=InlineKeyboardMarkup(keyboard1)
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data == 'calc':
+        keyboard = [
+            [InlineKeyboardButton("🇺🇸 دولار أمريكي", callback_data='calc_USD'),
+             InlineKeyboardButton("🇸🇦 ريال سعودي", callback_data='calc_SAR')],
+            [InlineKeyboardButton("🇦🇪 درهم إماراتي", callback_data='calc_AED'),
+             InlineKeyboardButton("🇪🇬 جنيه مصري", callback_data='calc_EGP')],
+            [InlineKeyboardButton("🇰🇼 دينار كويتي", callback_data='calc_KWD'),
+             InlineKeyboardButton("🇶🇦 ريال قطري", callback_data='calc_QAR')],
+            [InlineKeyboardButton("🇧🇭 دينار بحريني", callback_data='calc_BHD'),
+             InlineKeyboardButton("🇴🇲 ريال عماني", callback_data='calc_OMR')],
+            [InlineKeyboardButton("🇯🇴 دينار أردني", callback_data='calc_JOD'),
+             InlineKeyboardButton("🇱🇧 ليرة لبنانية", callback_data='calc_LBP')],
+            [InlineKeyboardButton("🇮🇶 دينار عراقي", callback_data='calc_IQD'),
+             InlineKeyboardButton("🇸🇾 ليرة سورية", callback_data='calc_SYP')],
+            [InlineKeyboardButton("🇾🇪 ريال يمني", callback_data='calc_YER'),
+             InlineKeyboardButton("🇩🇿 دينار جزائري", callback_data='calc_DZD')],
+            [InlineKeyboardButton("🇲🇦 درهم مغربي", callback_data='calc_MAD'),
+             InlineKeyboardButton("🇹🇳 دينار تونسي", callback_data='calc_TND')],
+            [InlineKeyboardButton("🇱🇾 دينار ليبي", callback_data='calc_LYD'),
+             InlineKeyboardButton("🇸🇩 جنيه سوداني", callback_data='calc_SDG')],
+            [InlineKeyboardButton("🇸🇴 شلن صومالي", callback_data='calc_SOS'),
+             InlineKeyboardButton("🇲🇷 أوقية موريتانية", callback_data='calc_MRU')],
+            [InlineKeyboardButton("🇵🇸 شيكل فلسطيني", callback_data='calc_ILS'),
+             InlineKeyboardButton("🇩🇯 فرنك جيبوتي", callback_data='calc_DJF')],
+            [InlineKeyboardButton("🇪🇺 يورو", callback_data='calc_EUR'),
+             InlineKeyboardButton("🇬🇧 جنيه إسترليني", callback_data='calc_GBP')],
+            [InlineKeyboardButton("🇨🇭 فرنك سويسري", callback_data='calc_CHF'),
+             InlineKeyboardButton("🇯🇵 ين ياباني", callback_data='calc_JPY')],
+            [InlineKeyboardButton("🇨🇳 يوان صيني", callback_data='calc_CNY'),
+             InlineKeyboardButton("🇹🇷 ليرة تركية", callback_data='calc_TRY')],
+            [InlineKeyboardButton("🇷🇺 روبل روسي", callback_data='calc_RUB'),
+             InlineKeyboardButton("🇮🇳 روبية هندية", callback_data='calc_INR')],
+            [InlineKeyboardButton("🔙 رجوع", callback_data='back')]
+        ]
+        await query.message.reply_text(
+            "🧮 حاسبة تحويل العملات\n\nاختر العملة التي تريد التحويل منها:",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+
+    elif query.data.startswith('calc_'):
+        currency = query.data.replace('calc_', '')
+        user_calc_data[query.from_user.id] = currency
+        currency_name = ALL_CURRENCIES.get(currency, currency)
+        await query.message.reply_text(
+            f"💱 أدخل المبلغ بـ {currency_name}:\n\n"
+            f"مثال: 100 أو 1500.50"
         )
 
     elif query.data.startswith('cur_'):
@@ -238,21 +347,37 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(get_currency(base))
 
     elif query.data == 'back':
-        keyboard = [
-            [InlineKeyboardButton("💰 العملات الرقمية", callback_data='crypto')],
-            [InlineKeyboardButton("⚗️ المعادن الثمينة", callback_data='metals')],
-            [InlineKeyboardButton("💵 أسعار الصرف", callback_data='currency_menu')],
-            [InlineKeyboardButton("📊 كل الأسعار بالدولار", callback_data='all_USD')]
-        ]
         await query.message.reply_text(
             "اختر ما تريد:",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            reply_markup=main_keyboard()
+        )
+
+async def handle_amount(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    if user_id not in user_calc_data:
+        return
+
+    try:
+        amount = float(update.message.text.replace(',', ''))
+        from_currency = user_calc_data[user_id]
+        await update.message.reply_text("⏳ جاري حساب التحويل...")
+        result = calculate_conversion(amount, from_currency)
+        await update.message.reply_text(result)
+        del user_calc_data[user_id]
+        await update.message.reply_text(
+            "اختر ما تريد:",
+            reply_markup=main_keyboard()
+        )
+    except ValueError:
+        await update.message.reply_text(
+            "⚠️ الرجاء إدخال رقم صحيح فقط\nمثال: 100 أو 1500.50"
         )
 
 def main():
     application = Application.builder().token(TOKEN).build()
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CallbackQueryHandler(button))
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_amount))
     application.run_polling()
 
 if __name__ == "__main__":
