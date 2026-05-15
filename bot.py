@@ -25,9 +25,7 @@ def get_crypto():
         bnb = r['binancecoin']
         sol = r['solana']
         xrp = r['ripple']
-
         def arrow(c): return "📈" if c > 0 else "📉"
-
         return (
             f"💰 أسعار العملات الرقمية:\n\n"
             f"{arrow(btc['usd_24h_change'])} BTC: {btc['usd']:,}$ ({btc['usd_24h_change']:.1f}%)\n"
@@ -55,7 +53,6 @@ def get_currency(base='USD'):
             timeout=10
         ).json()
         rates = r['rates']
-
         base_names = {
             'USD': '🇺🇸 الدولار الأمريكي',
             'SAR': '🇸🇦 الريال السعودي',
@@ -64,32 +61,31 @@ def get_currency(base='USD'):
             'EUR': '🇪🇺 اليورو',
             'GBP': '🇬🇧 الجنيه الإسترليني',
         }
-
         return (
             f"💵 أسعار الصرف مقابل {base_names.get(base, base)}:\n\n"
-f"🌍 العملات العربية:\n"
-f"🇸🇦 ريال سعودي: {rates.get('SAR')}\n"
-f"🇦🇪 درهم إماراتي: {rates.get('AED')}\n"
-f"🇪🇬 جنيه مصري: {rates.get('EGP')}\n"
-f"🇰🇼 دينار كويتي: {rates.get('KWD')}\n"
-f"🇧🇭 دينار بحريني: {rates.get('BHD')}\n"
-f"🇶🇦 ريال قطري: {rates.get('QAR')}\n"
-f"🇴🇲 ريال عماني: {rates.get('OMR')}\n"
-f"🇯🇴 دينار أردني: {rates.get('JOD')}\n"
-f"🇱🇧 ليرة لبنانية: {rates.get('LBP')}\n"
-f"🇮🇶 دينار عراقي: {rates.get('IQD')}\n"
-f"🇩🇿 دينار جزائري: {rates.get('DZD')}\n"
-f"🇲🇦 درهم مغربي: {rates.get('MAD')}\n"
-f"🇹🇳 دينار تونسي: {rates.get('TND')}\n"
-f"🇱🇾 دينار ليبي: {rates.get('LYD')}\n"
-f"🇸🇩 جنيه سوداني: {rates.get('SDG')}\n"
-f"🇾🇪 ريال يمني: {rates.get('YER')}\n"
-f"🇸🇾 ليرة سورية: {rates.get('SYP')}\n"
-f"🇸🇴 شلن صومالي: {rates.get('SOS')}\n"
-f"🇩🇯 فرنك جيبوتي: {rates.get('DJF')}\n"
-f"🇰🇲 فرنك قمري: {rates.get('KMF')}\n"
-f"🇲🇷 أوقية موريتانية: {rates.get('MRU')}\n"
-f"🇵🇸 شيكل (فلسطين): {rates.get('ILS')}\n\n"
+            f"🌍 العملات العربية:\n"
+            f"🇸🇦 ريال سعودي: {rates.get('SAR')}\n"
+            f"🇦🇪 درهم إماراتي: {rates.get('AED')}\n"
+            f"🇪🇬 جنيه مصري: {rates.get('EGP')}\n"
+            f"🇰🇼 دينار كويتي: {rates.get('KWD')}\n"
+            f"🇧🇭 دينار بحريني: {rates.get('BHD')}\n"
+            f"🇶🇦 ريال قطري: {rates.get('QAR')}\n"
+            f"🇴🇲 ريال عماني: {rates.get('OMR')}\n"
+            f"🇯🇴 دينار أردني: {rates.get('JOD')}\n"
+            f"🇱🇧 ليرة لبنانية: {rates.get('LBP')}\n"
+            f"🇮🇶 دينار عراقي: {rates.get('IQD')}\n"
+            f"🇩🇿 دينار جزائري: {rates.get('DZD')}\n"
+            f"🇲🇦 درهم مغربي: {rates.get('MAD')}\n"
+            f"🇹🇳 دينار تونسي: {rates.get('TND')}\n"
+            f"🇱🇾 دينار ليبي: {rates.get('LYD')}\n"
+            f"🇸🇩 جنيه سوداني: {rates.get('SDG')}\n"
+            f"🇾🇪 ريال يمني: {rates.get('YER')}\n"
+            f"🇸🇾 ليرة سورية: {rates.get('SYP')}\n"
+            f"🇸🇴 شلن صومالي: {rates.get('SOS')}\n"
+            f"🇩🇯 فرنك جيبوتي: {rates.get('DJF')}\n"
+            f"🇰🇲 فرنك قمري: {rates.get('KMF')}\n"
+            f"🇲🇷 أوقية موريتانية: {rates.get('MRU')}\n"
+            f"🇵🇸 شيكل (فلسطين): {rates.get('ILS')}\n\n"
             f"🌐 العملات الأجنبية:\n"
             f"🇺🇸 دولار أمريكي: {rates.get('USD')}\n"
             f"🇪🇺 يورو: {rates.get('EUR')}\n"
@@ -106,7 +102,7 @@ f"🇵🇸 شيكل (فلسطين): {rates.get('ILS')}\n\n"
             f"🇧🇷 ريال برازيلي: {rates.get('BRL')}\n"
             f"🇸🇬 دولار سنغافوري: {rates.get('SGD')}\n"
             f"🇳🇴 كرون نرويجي: {rates.get('NOK')}\n"
-            f"🇸🇪 كرون سويدي: {rates.get('SEK')}\n
+            f"🇸🇪 كرون سويدي: {rates.get('SEK')}\n"
         )
     except Exception as e:
         return f"تعذر جلب أسعار الصرف: {e}"
