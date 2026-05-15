@@ -4,36 +4,59 @@ import requests
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger(__name__)
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
 
 TOKEN = os.environ.get('TELEGRAM_TOKEN', '')
 
 def get_crypto():
     try:
         url = "https://api.coingecko.com/api/v3/simple/price"
-        params = {'ids': 'bitcoin,ethereum', 'vs_currencies': 'usd', 'include_24hr_change': 'true'}
+        params = {
+            'ids': 'bitcoin,ethereum',
+            'vs_currencies': 'usd',
+            'include_24hr_change': 'true'
+        }
         r = requests.get(url, params=params, timeout=10).json()
         btc = r['bitcoin']
         eth = r['ethereum']
-        return f"₿ BTC: {btc['usd']:,}$ ({btc['usd_24h_change']:.1f}%)\nΞ ETH: {eth['usd']:,}$ ({eth['usd_24h_change']:.1f}%)"
-    except:
-        return "تعذر جلب الأسعار حالياً"
+        return (
+            f"₿ BTC: {btc['usd']:,}$"
+            f" ({btc['usd_24h_change']:.1f}%)\n"
+            f"Ξ ETH: {eth['usd']:,}$"
+            f" ({eth['usd_24h_change']:.1f}%)"
+        )
+    except Exception as e:
+        return f"تعذر جلب الأسعار: {e}"
 
 def get_gold():
     try:
-        r = requests.get("https://api.metals.live/v1/spot/gold", timeout=10).json()
+        r = requests.get(
+            "https://api.metals.live/v1/spot/gold",
+            timeout=10
+        ).json()
         return f"🥇 الذهب: {r[0]['price']}$ للأونصة"
-    except:
-        return "تعذر جلب سعر الذهب"
+    except Exception as e:
+        return f"تعذر جلب سعر الذهب: {e}"
 
 def get_currency():
     try:
-        r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10).json()
+        r = requests.get(
+            "https://api.exchangerate-api.com/v4/latest/USD",
+            timeout=10
+        ).json()
         rates = r['rates']
-        return f"💵 أسعار الصرف:\nريال سعودي: {rates.get('SAR')}\nدرهم: {rates.get('AED')}\nجنيه مصري: {rates.get('EGP')}\nيورو: {rates.get('EUR')}"
-    except:
-        return "تعذر جلب أسعار الصرف"
+        return (
+            f"💵 أسعار الصرف:\n"
+            f"ريال سعودي: {rates.get('SAR')}\n"
+            f"درهم: {rates.get('AED')}\n"
+            f"جنيه مصري: {rates.get('EGP')}\n"
+            f"يورو: {rates.get('EUR')}"
+        )
+    except Exception as e:
+        return f"تعذر جلب أسعار الصرف: {e}"
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
@@ -43,7 +66,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         [InlineKeyboardButton("📊 كل الأسعار", callback_data='all')]
     ]
     await update.message.reply_text(
-        "👋 مرحباً في بوت الخبير الاقتصادي!\nاختر ما تريد:",
+        "👋 مرحباً في بوت الخبير الاقتصادي!\n"
+        "اختر ما تريد:",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -61,11 +85,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.message.reply_text(msg)
 
 def main():
-    app = Application.builder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(button))
-    log.info("البوت يعمل!")
-    app.run_polling()
+    application = Application.builder().token(TOKEN).build()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(CallbackQueryHandler(button))
+    application.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
     main()
